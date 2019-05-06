@@ -6,6 +6,9 @@ pcm_push: pcm_push.c
 pcm_pull: pcm_pull.c
 	gcc -o pcm_pull pcm_pull.c -lasound
 
+silenece: silence.c
+	gcc -o silence silence.c -lasound
+
 midi_probe: midi_probe.o RtMidi.o
 	g++ -o midi_probe midi_probe.o RtMidi.o -lasound -lpthread
 
@@ -19,7 +22,7 @@ midi_callback.o: midi_callback.cpp
 	g++ -c midi_callback.cpp
 
 trigger: trigger.o
-	g++ -o trigger trigger.o RtMidi.o -lasound -pthread
+	g++ -o trigger trigger.o RtMidi.o -lasound -lpthread -lwiringPi
 
 trigger.o: trigger.cpp
 	g++ -Wall -c trigger.cpp

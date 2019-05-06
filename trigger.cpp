@@ -1,4 +1,5 @@
 #include <iostream>
+#include <wiringPi.h>
 #include <stdio.h>  
 #include <cstdlib>
 #include <pthread.h>
@@ -10,8 +11,10 @@
 #include "RtMidi.h"
 
 #define PCM_DEVICE "default"
-#define NFRAMES 256
-#define BUFSIZE 1024
+#define NFRAMES 4
+#define BUFSIZE 2*NFRAMES
+#define BITRATE 22050
+#define CHANNELS 1
       
 typedef struct clip {
 	unsigned int size;
@@ -19,6 +22,7 @@ typedef struct clip {
 } clip;
 
 clip c0;
+int state = 1;
 volatile unsigned int playing = 0;
 volatile unsigned int offset = 0;
 pthread_mutex_t lock;
@@ -27,11 +31,13 @@ snd_pcm_t *playback_handle;
 clip
 readClip(const char *name)
 {
+    // FIXME: clip must be longer than skip bytes!
+    long skip = 0;
     FILE *fl = fopen(name, "r");
     fseek(fl, 0, SEEK_END);
-    long len = ftell(fl);
+    long len = ftell(fl) - skip;
     char *ret = (char *)malloc(len);
-    fseek(fl, 0, SEEK_SET);
+    fseek(fl, skip, SEEK_SET);
     fread(ret, 1, len, fl);
     fclose(fl);
     clip c;
@@ -44,6 +50,13 @@ void
 midi_callback( double deltatime, std::vector< unsigned char > *message, void *userData )
 {
 	if ( message->size() >= 3 && message->at(1) == 36 && message->at(2) > 0 ) {
+		if (state) {
+			state = 0;
+		} else {
+                        state = 1;
+		}
+		digitalWrite(1, state);
+
 		std::cout << "Kick" << std::endl;
 		pthread_mutex_lock(&lock);
 		playing = 1;
@@ -160,14 +173,14 @@ void* pcmThread(void *arg)
 		exit (1);
 	}
 
-	unsigned int rate = 44100;
+	unsigned int rate = BITRATE;
 	if ((err = snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, &rate, 0)) < 0) {
 		fprintf (stderr, "cannot set sample rate (%s)\n",
 			 snd_strerror (err));
 		exit (1);
 	}
 
-	if ((err = snd_pcm_hw_params_set_channels (playback_handle, hw_params, 2)) < 0) {
+	if ((err = snd_pcm_hw_params_set_channels (playback_handle, hw_params, CHANNELS)) < 0) {
 		fprintf (stderr, "cannot set channel count (%s)\n",
 			 snd_strerror (err));
 		exit (1);
@@ -271,6 +284,12 @@ main (int argc, char *argv[])
 	}
 	c0 = readClip("/home/pi/yass/wav/kick.wav");
 	std::cout << "Kick loaded: " << c0.size << " bytes" << std::endl;	
+
+	if (wiringPiSetup () == -1)
+		return 1;
+
+	pinMode(1, OUTPUT);        // aka BCM_GPIO pin 18
+	digitalWrite (1, state);   // On
 
 	pthread_t t0;
 	if ((err = pthread_create(&t0, NULL, &midiThread, NULL)) != 0 )
