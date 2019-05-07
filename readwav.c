@@ -134,6 +134,8 @@ main (int argc, char *argv[])
 		printf("Subchunk2Size is incorrect\n");
 		printf("Expected file size > %d\n", expected_file_size);
 		return 1;
+	} else if (expected_file_size < size) {
+		printf("[WARNING] skipping %d bytes at end of file...\n", size - expected_file_size);
 	}
 
 	// Thanks to the above checks, we know the block_align is 16 bit * 1 channel = 2 bytes.
@@ -148,9 +150,9 @@ main (int argc, char *argv[])
 	}
 	fclose(file);
 	
-	size_t i;
-	for (i = 0; i < length; i++) {
-		printf("%d\n", buffer[i]);
-	}
+	// size_t i;
+	// for (i = 0; i < length; i++) {
+	//	printf("%d\n", buffer[i]);
+	// }
 	return 0;
 }

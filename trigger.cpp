@@ -38,7 +38,8 @@ readClip(const char *name)
     size_t skip = 44;
     FILE *file = fopen(name, "r");
     fseek(file, 0, SEEK_END);
-    size_t size = (ftell(file) - skip) / 2; // 16 bit samples
+    // FIXME: skipping 72 bytes at end as well to fix snare
+    size_t size = (ftell(file) - skip - 72) / 2; // 16 bit samples
     int16_t *buffer = (int16_t *)malloc(2 * size);
     fseek(file, skip, SEEK_SET);
     fread(buffer, 2, size, file); // both wave files and the raspberrypi is Little Endian so...
@@ -67,7 +68,7 @@ midi_callback( double deltatime, std::vector< unsigned char > *message, void *us
 	}
 }
 
-char buf[BUFSIZE];
+int16_t buf[BUFSIZE];
 
 int
 playback_callback (snd_pcm_sframes_t nframes)
@@ -106,7 +107,7 @@ playback_callback (snd_pcm_sframes_t nframes)
 	/* Regardless of how many frames it asked for,
 	we only have a buffer for NFRAMES frames (*2 channels * 2 bytes (16 bits)
 	*/
-	if ((err = snd_pcm_writei (playback_handle, buf, NFRAMES)) < 0) {
+	if ((err = snd_pcm_writei (playback_handle, (char *)buf, NFRAMES)) < 0) {
 		fprintf (stderr, "write failed (%s)\n", snd_strerror (err));
 	}
 
@@ -295,11 +296,6 @@ main (int argc, char *argv[])
 
 	c1 = readClip("/home/pi/yass/wav/snare.wav");
 	std::cout << "Snare loaded: " << c1.size << " samples" << std::endl;	
-	size_t i;
-	for (i = 0; i < c0.size; i++) {
-		printf("%d\n", c0.buffer[i]);
-	}
-	return 0;
 
 	if (wiringPiSetup () == -1)
 		return 1;
