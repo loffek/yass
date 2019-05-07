@@ -2,6 +2,7 @@
 #include <wiringPi.h>
 #include <stdio.h>  
 #include <cstdlib>
+#include <stdint.h>
 #include <pthread.h>
 #include <signal.h>
 #include <errno.h>
@@ -12,19 +13,21 @@
 
 #define PCM_DEVICE "default"
 #define NFRAMES 4
-#define BUFSIZE 2*NFRAMES
-#define BITRATE 22050
 #define CHANNELS 1
+#define BUFSIZE CHANNELS*NFRAMES
+#define BITRATE 44100
       
 typedef struct clip {
-	unsigned int size;
-   	char *buffer;
+	size_t size;
+   	int16_t *buffer;
 } clip;
 
 clip c0;
+clip c1;
 int state = 1;
+volatile unsigned int clip_select = 0;
 volatile unsigned int playing = 0;
-volatile unsigned int offset = 0;
+volatile size_t offset = 0;
 pthread_mutex_t lock;
 snd_pcm_t *playback_handle;
 
@@ -32,17 +35,17 @@ clip
 readClip(const char *name)
 {
     // FIXME: clip must be longer than skip bytes!
-    long skip = 0;
-    FILE *fl = fopen(name, "r");
-    fseek(fl, 0, SEEK_END);
-    long len = ftell(fl) - skip;
-    char *ret = (char *)malloc(len);
-    fseek(fl, skip, SEEK_SET);
-    fread(ret, 1, len, fl);
-    fclose(fl);
+    size_t skip = 44;
+    FILE *file = fopen(name, "r");
+    fseek(file, 0, SEEK_END);
+    size_t size = (ftell(file) - skip) / 2; // 16 bit samples
+    int16_t *buffer = (int16_t *)malloc(2 * size);
+    fseek(file, skip, SEEK_SET);
+    fread(buffer, 2, size, file); // both wave files and the raspberrypi is Little Endian so...
+    fclose(file);
     clip c;
-    c.size = len;
-    c.buffer = ret;
+    c.size = size;
+    c.buffer = buffer;
     return c;
 }
 
@@ -50,15 +53,14 @@ void
 midi_callback( double deltatime, std::vector< unsigned char > *message, void *userData )
 {
 	if ( message->size() >= 3 && message->at(1) == 36 && message->at(2) > 0 ) {
-		if (state) {
-			state = 0;
-		} else {
-                        state = 1;
-		}
-		digitalWrite(1, state);
-
-		std::cout << "Kick" << std::endl;
 		pthread_mutex_lock(&lock);
+		clip_select = 0; // kick		
+		playing = 1;
+		offset = 0;
+		pthread_mutex_unlock(&lock);
+	} else if ( message->size() >= 3 && message->at(1) == 38 && message->at(2) > 0 ) {
+		pthread_mutex_lock(&lock);
+		clip_select = 1; // snare		
 		playing = 1;
 		offset = 0;
 		pthread_mutex_unlock(&lock);
@@ -77,12 +79,18 @@ playback_callback (snd_pcm_sframes_t nframes)
 	int i=0;
 	if (playing)
 	{
-		for (; i < BUFSIZE && i+offset < c0.size; i++) {
-			buf[i] = c0.buffer[i+offset];		
+		clip c;
+		if (clip_select == 0) {
+			c = c0;
+		} else {
+			c = c1;
+		}
+		for (; i < BUFSIZE && i+offset < c.size; i++) {
+			buf[i] = c.buffer[i+offset];		
 		}
 		offset += i;
-		if (offset >= c0.size) {
-			std::cout << "clip ended" << std::endl;
+		if (offset >= c.size) {
+			// std::cout << "clip ended" << std::endl;
 			playing = 0;
 			offset = 0;
 		}
@@ -282,8 +290,16 @@ main (int argc, char *argv[])
 		std::cout << "mutex init failed" << std::endl;
 		return 1;
 	}
-	c0 = readClip("/home/pi/yass/wav/kick.wav");
-	std::cout << "Kick loaded: " << c0.size << " bytes" << std::endl;	
+	c0 = readClip("/home/pi/yass/wav/kick2.wav");
+	std::cout << "Kick loaded: " << c0.size << " samples" << std::endl;	
+
+	c1 = readClip("/home/pi/yass/wav/snare.wav");
+	std::cout << "Snare loaded: " << c1.size << " samples" << std::endl;	
+	size_t i;
+	for (i = 0; i < c0.size; i++) {
+		printf("%d\n", c0.buffer[i]);
+	}
+	return 0;
 
 	if (wiringPiSetup () == -1)
 		return 1;
