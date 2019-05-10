@@ -53,13 +53,13 @@ readClip(const char *name)
 void
 midi_callback( double deltatime, std::vector< unsigned char > *message, void *userData )
 {
-	if ( message->size() >= 3 && message->at(1) == 36 && message->at(2) > 0 ) {
+	if ( message->size() >= 3 && message->at(0) == 145 && message->at(1) == 62 && message->at(2) > 0 ) {
 		pthread_mutex_lock(&lock);
 		clip_select = 0; // kick		
 		playing = 1;
 		offset = 0;
 		pthread_mutex_unlock(&lock);
-	} else if ( message->size() >= 3 && message->at(1) == 38 && message->at(2) > 0 ) {
+	} else if ( message->size() >= 3 && message->at(0) == 145 && message->at(1) == 64 && message->at(2) > 0 ) {
 		pthread_mutex_lock(&lock);
 		clip_select = 1; // snare		
 		playing = 1;
